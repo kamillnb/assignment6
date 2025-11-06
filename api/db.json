@@ -1,0 +1,40 @@
+{
+  "menu": [
+    {
+      "id": 1,
+      "title": "Charred Salmon",
+      "description": "Fennel, dill & lemon",
+      "price": 295,
+      "image": "https://images.unsplash.com/photo-1504674900247-0877df9cc836?q=80&w=1200",
+      "category": "Mains",
+      "favourite": false
+    },
+    {
+      "id": 2,
+      "title": "Lobster Pasta",
+      "description": "Tomato & basil, fresh tagliatelle",
+      "price": 345,
+      "image": "https://images.unsplash.com/photo-1521389508051-d7ffb5dc8bbf?q=80&w=1200",
+      "category": "Pasta",
+      "favourite": true
+    },
+    {
+      "id": 3,
+      "title": "Seasonal Greens",
+      "description": "Smoky almonds, citrus vinaigrette",
+      "price": 145,
+      "image": "https://images.unsplash.com/photo-1490645935967-10de6ba17061?q=80&w=1200",
+      "category": "Starters",
+      "favourite": false
+    },
+    {
+      "id": 4,
+      "title": "Fire-Grilled Ribeye",
+      "description": "Herb butter, charred lemon",
+      "price": 395,
+      "image": "https://images.unsplash.com/photo-1551183053-bf91a1d81141?q=80&w=1200",
+      "category": "Grill",
+      "favourite": false
+    }
+  ]
+}
