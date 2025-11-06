@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { StatusBar } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Alert, StatusBar } from 'react-native';
 import {
   DarkTheme,
   NavigationContainer,
@@ -9,6 +9,8 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 
 import type { Category, MenuItem } from './src/types';
 import type { RootStackParamList, MainTabParamList } from './src/nav/types';
+
+import { addDish, deleteDish, getMenu, updateDish } from './src/services/api';
 
 import HomeScreen from './src/screens/HomeScreen';
 import DetailsScreen from './src/screens/DetailsScreen';
@@ -34,11 +36,31 @@ const THEME = {
 const CATEGORIES: Category[] = ['Starters','Mains','Grill','Pasta','Desserts','Wine'];
 
 function MainTabs({
-  menu, selected, setSelected,
+  menu,
+  selected,
+  setSelected,
+  loading,
+  error,
+  refreshMenu,
+  onCreateDish,
+  creating,
+  onToggleFavourite,
+  onDeleteDish,
+  updatingIds,
+  deletingIds,
 }: {
   menu: MenuItem[];
   selected: Category;
   setSelected: (c: Category) => void;
+  loading: boolean;
+  error: string | null;
+  refreshMenu: () => void;
+  onCreateDish: (category: Category) => void;
+  creating: boolean;
+  onToggleFavourite: (item: MenuItem) => void;
+  onDeleteDish: (item: MenuItem) => void;
+  updatingIds: number[];
+  deletingIds: number[];
 }) {
   return (
     <Tabs.Navigator
@@ -48,21 +70,27 @@ function MainTabs({
         tabBarActiveTintColor: '#FFD9B3',
         tabBarInactiveTintColor: '#9e9e9e',
         tabBarIcon: ({ color }) => (
-          // enkle emoji-ikoner (ingen lib nødvendig)
-          // 🍽️ ⭐ ℹ️
-          // (kun tekst-ikon for å holde koden minimal)
-          // eslint-disable-next-line react-native/no-inline-styles
-          <>{/* icon placeholder */}</>
+          <></> // enkel placeholder – vi bruker bare labels
         ),
       })}
     >
       <Tabs.Screen name="Browse">
-        {() => (
+        {({ navigation }) => (
           <HomeScreen
             categories={CATEGORIES}
             selected={selected}
             onSelect={setSelected}
-            items={menu.filter(m => m.category === selected)}
+            menu={menu}
+            loading={loading}
+            error={error}
+            onRefresh={refreshMenu}
+            onCreate={onCreateDish}
+            creating={creating}
+            onToggleFavourite={onToggleFavourite}
+            onDelete={onDeleteDish}
+            onOpenDetails={(item) => navigation.navigate('Details', { item })}
+            updatingIds={updatingIds}
+            deletingIds={deletingIds}
           />
         )}
       </Tabs.Screen>
@@ -74,12 +102,97 @@ function MainTabs({
 
 export default function App() {
   const [selected, setSelected] = useState<Category>('Mains');
-  const [menu] = useState<MenuItem[]>([
-    { id:'1', title:'Fire-Grilled Ribeye', description:'Herb butter, charred lemon', price:'NOK 395', image:'https://images.unsplash.com/photo-1551183053-bf91a1d81141?q=80&w=1200', category:'Grill' },
-    { id:'2', title:'Lobster Pasta', description:'Tomato & basil, fresh tagliatelle', price:'NOK 345', image:'https://images.unsplash.com/photo-1521389508051-d7ffb5dc8bbf?q=80&w=1200', category:'Pasta' },
-    { id:'3', title:'Seasonal Greens', description:'Smoky almonds, citrus vinaigrette', price:'NOK 145', image:'https://images.unsplash.com/photo-1490645935967-10de6ba17061?q=80&w=1200', category:'Starters' },
-    { id:'4', title:'Charred Salmon', description:'Fennel, dill & lemon', price:'NOK 295', image:'https://images.unsplash.com/photo-1504674900247-0877df9cc836?q=80&w=1200', category:'Mains' },
-  ]);
+  const [menu, setMenu] = useState<MenuItem[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState<boolean>(false);
+  const [updatingIds, setUpdatingIds] = useState<number[]>([]);
+  const [deletingIds, setDeletingIds] = useState<number[]>([]);
+
+  const refreshMenu = useCallback(async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      const data = await getMenu();
+      setMenu(data);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to load menu';
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshMenu();
+  }, [refreshMenu]);
+
+  const handleCreateDish = useCallback(async (category: Category) => {
+    if (creating) return;
+    setCreating(true);
+    try {
+      const payload: Partial<MenuItem> = {
+        title: `Chef's ${category} ${new Date().toLocaleTimeString()}`,
+        description: 'Seasonal dish added from the mobile app.',
+        price: Math.floor(150 + Math.random() * 200),
+        image: 'https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?q=80&w=1200',
+        category,
+        favourite: false,
+      };
+      const created = await addDish(payload);
+      setMenu(prev => [...prev, created]);
+      setError(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to add dish';
+      Alert.alert('Failed to add dish', message);
+    } finally {
+      setCreating(false);
+    }
+  }, [creating]);
+
+  const handleToggleFavourite = useCallback(async (item: MenuItem) => {
+    if (updatingIds.includes(item.id)) return;
+    setUpdatingIds(prev => (prev.includes(item.id) ? prev : [...prev, item.id]));
+    const nextFav = !item.favourite;
+
+    let snapshot: MenuItem[] = [];
+    setMenu(prev => {
+      snapshot = prev;
+      return prev.map(m => (m.id === item.id ? { ...m, favourite: nextFav } : m));
+    });
+
+    try {
+      const updated = await updateDish(item.id, { favourite: nextFav });
+      setMenu(prev => prev.map(m => (m.id === updated.id ? updated : m)));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to update favourite';
+      setMenu(snapshot);
+      Alert.alert('Failed to update favourite', message);
+    } finally {
+      setUpdatingIds(prev => prev.filter(id => id !== item.id));
+    }
+  }, [updatingIds]);
+
+  const handleDeleteDish = useCallback(async (item: MenuItem) => {
+    if (deletingIds.includes(item.id)) return;
+    setDeletingIds(prev => (prev.includes(item.id) ? prev : [...prev, item.id]));
+
+    let snapshot: MenuItem[] = [];
+    setMenu(prev => {
+      snapshot = prev;
+      return prev.filter(m => m.id !== item.id);
+    });
+
+    try {
+      await deleteDish(item.id);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to delete dish';
+      setMenu(snapshot);
+      Alert.alert('Failed to delete dish', message);
+    } finally {
+      setDeletingIds(prev => prev.filter(id => id !== item.id));
+    }
+  }, [deletingIds]);
 
   return (
     <>
@@ -88,7 +201,20 @@ export default function App() {
         <Stack.Navigator screenOptions={{ headerShown: false }}>
           <Stack.Screen name="MainTabs">
             {() => (
-              <MainTabs menu={menu} selected={selected} setSelected={setSelected} />
+              <MainTabs
+                menu={menu}
+                selected={selected}
+                setSelected={setSelected}
+                loading={loading}
+                error={error}
+                refreshMenu={refreshMenu}
+                onCreateDish={handleCreateDish}
+                creating={creating}
+                onToggleFavourite={handleToggleFavourite}
+                onDeleteDish={handleDeleteDish}
+                updatingIds={updatingIds}
+                deletingIds={deletingIds}
+              />
             )}
           </Stack.Screen>
           <Stack.Screen name="Details" component={DetailsScreen} />
